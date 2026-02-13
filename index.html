@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Studio - Allocazione Budget (jsPsych)</title>
+
+  <!-- jsPsych core -->
+  <script src="https://unpkg.com/jspsych@7.3.4"></script>
+  <link href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" rel="stylesheet" />
+
+  <!-- Plugins -->
+  <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.2"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-survey-html-form@1.1.2"></script>
+  <script src="https://unpkg.com/@jspsych/plugin-preload@1.1.2"></script>
+
+  <style>
+    body { background: #fff; }
+    .box { max-width: 900px; margin: 0 auto; }
+    .muted { opacity: 0.8; }
+    input[type="number"]{ width: 120px; padding: 6px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 12px;
+      margin-bottom: 12px;
+    }
+    .card {
+      border: 1px solid #e5e5e5;
+      border-radius: 12px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 120px 1fr;
+      gap: 12px;
+      align-items: center;
+    }
+    .imgwrap {
+      width: 120px; height: 120px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fafafa;
+    }
+    .imgwrap img { width: 100%; height: 100%; object-fit: cover; }
+    .label { font-weight: 600; margin-bottom: 6px; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .hint { font-size: 0.95rem; }
+    .warn { color: #b00020; font-weight: 600; }
+    .btnrow { margin-top: 14px; }
+  </style>
+</head>
+<body></body>
+
+<script>
+  // ======= PARAMETRI =======
+  const BUDGET = 100;     // Cambia qui (es. 10000 se vuoi in €)
+  const N_TRIALS = 10;    // Numero iterazioni
+
+  // Prodotti + immagini (metti i file in /img)
+  const PRODUCTS = [
+    { id: "p1", name: "Prodotto 1", img: "img/p1.jpg" },
+    { id: "p2", name: "Prodotto 2", img: "img/p2.jpg" },
+    { id: "p3", name: "Prodotto 3", img: "img/p3.jpg" },
+    { id: "p4", name: "Prodotto 4", img: "img/p4.jpg" },
+  ];
+
+  // ======= HELPERS =======
+  function sum(arr){ return arr.reduce((a,b)=>a+b,0); }
+  function mean(arr){ return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+
+  function parseAllocations(responseObj){
+    // responseObj = {p1:"10", p2:"20", ...}
+    return PRODUCTS.map(p => Number(responseObj[p.id]));
+  }
+
+  function renderProductCards(){
+    // 4 cards con immagine + input
+    return `
+      <div class="grid">
+        ${PRODUCTS.map(p => `
+          <div class="card">
+            <div class="imgwrap">
+              <img src="${p.img}" alt="${p.name}">
+            </div>
+            <div>
+              <div class="label">${p.name}</div>
+              <div class="row">
+                <span class="hint">Quota:</span>
+                <input name="${p.id}" type="number" min="0" max="${BUDGET}" required>
+              </div>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  // ======= TIMELINE =======
+  const timeline = [];
+
+  // Preload immagini (consigliato: evita flash/ritardi)
+  timeline.push({
+    type: jsPsychPreload,
+    images: PRODUCTS.map(p => p.img)
+  });
+
+  timeline.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div class="box">
+        <h2>Studio sulle preferenze di prodotto</h2>
+        <p class="muted">
+          In questo studio ti verrà chiesto di distribuire un budget tra quattro prodotti.
+          Non ci sono risposte giuste o sbagliate: ci interessa la tua scelta personale.
+        </p>
+        <p>Premi <strong>spazio</strong> per continuare.</p>
+      </div>
+    `,
+    choices: [" "]
+  });
+
+  timeline.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: `
+      <div class="box">
+        <h3>Istruzioni</h3>
+        <p>
+          In ogni iterazione avrai un budget totale di <strong>${BUDGET}</strong>.
+          Inserisci quattro valori (uno per ciascun prodotto).
+        </p>
+        <p>
+          La <strong>somma</strong> dei quattro valori deve essere <strong>esattamente ${BUDGET}</strong>.
+          Se la somma non è corretta, ti verrà chiesto di riprovare.
+        </p>
+        <p>Premi <strong>spazio</strong> per iniziare.</p>
+      </div>
+    `,
+    choices: [" "]
+  });
+
+  // Nodo trial con loop: ripete finché valido
+  function makeBudgetTrial(iteration){
+    const form_trial = {
+      type: jsPsychSurveyHtmlForm,
+      preamble: `
+        <div class="box">
+          <h3>Allocazione budget — Iterazione ${iteration}/${N_TRIALS}</h3>
+          <p>Budget disponibile: <strong>${BUDGET}</strong></p>
+          <p class="muted">Inserisci importi interi (0–${BUDGET}). Somma = ${BUDGET}.</p>
+        </div>
+      `,
+      html: `
+        <div class="box">
+          ${renderProductCards()}
+          <div class="btnrow">
+            <button class="jspsych-btn">Continua</button>
+          </div>
+        </div>
+      `,
+      autofocus: PRODUCTS[0].id,
+      on_finish: function(data){
+        const alloc = parseAllocations(data.response);
+        data.iteration = iteration;
+        data.budget = BUDGET;
+
+        // colonne pulite
+        PRODUCTS.forEach((p, i) => data[`alloc_${p.id}`] = alloc[i]);
+
+        data.alloc_sum = sum(alloc);
+        data.valid_sum = (data.alloc_sum === BUDGET);
+      }
+    };
+
+    const error_screen = {
+      type: jsPsychHtmlKeyboardResponse,
+      stimulus: function(){
+        const lastForm = jsPsych.data.get().filter({trial_type: "survey-html-form"}).last(1).values()[0];
+        return `
+          <div class="box">
+            <h3 class="warn">Somma non valida</h3>
+            <p>La somma inserita è <strong>${lastForm.alloc_sum}</strong>, ma deve essere <strong>${BUDGET}</strong>.</p>
+            <p>Premi <strong>spazio</strong> per riprovare la stessa iterazione.</p>
+          </div>
+        `;
+      },
+      choices: [" "]
+    };
+
+    // loop_node: ripete (form + eventuale error) finché valid_sum = true
+    const loop_node = {
+      timeline: [form_trial, error_screen],
+      loop_function: function(){
+        const lastForm = jsPsych.data.get().filter({trial_type: "survey-html-form"}).last(1).values()[0];
+        return !lastForm.valid_sum; // true => ripeti
+      }
+    };
+
+    return loop_node;
+  }
+
+  for(let t=1; t<=N_TRIALS; t++){
+    timeline.push(makeBudgetTrial(t));
+  }
+
+  timeline.push({
+    type: jsPsychHtmlKeyboardResponse,
+    stimulus: function(){
+      const rows = jsPsych.data.get().filter({trial_type: "survey-html-form"}).values();
+
+      const means = PRODUCTS.map(p => {
+        const vals = rows.map(r => r[`alloc_${p.id}`]).filter(v => Number.isFinite(v));
+        return mean(vals);
+      });
+
+      return `
+        <div class="box">
+          <h2>Fine dello studio</h2>
+          <p>Grazie per la partecipazione.</p>
+
+          <h3>Riepilogo (media quote)</h3>
+          <table style="border-collapse:collapse; margin-top:12px;">
+            <tr>
+              <th style="border:1px solid #ddd; padding:8px;">Prodotto</th>
+              <th style="border:1px solid #ddd; padding:8px;">Media</th>
+            </tr>
+            ${PRODUCTS.map((p, i) => `
+              <tr>
+                <td style="border:1px solid #ddd; padding:8px;">${p.name}</td>
+                <td style="border:1px solid #ddd; padding:8px;">${means[i].toFixed(2)}</td>
+              </tr>
+            `).join("")}
+          </table>
+
+          <p class="muted" style="margin-top:12px;">
+            Premi <strong>spazio</strong> per terminare.
+          </p>
+        </div>
+      `;
+    },
+    choices: [" "]
+  });
+
+  jsPsych.init({
+    timeline: timeline,
+    on_finish: function(){
+      // salva i dati localmente (download automatico)
+      jsPsych.data.get().localSave('csv', 'dati_studio.csv');
+      // oppure json:
+      // jsPsych.data.get().localSave('json', 'dati_studio.json');
+    }
+  });
+</script>
+</html>
